@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2048 數字抑制遊戲 (AI 增強版)</title>
+    <style>
+        /* 引入 Inter 字體作為通用字體，提供清晰的顯示效果 */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+
+        :root {
+            /* 顏色變量 */
+            --color-bg-main: #fcfcfc;
+            --color-grid-bg: #bbada0;
+            --color-empty-cell: #cdc1b4;
+            --color-ai-button: #5cb85c; /* 綠色，代表策略 */
+            --font-stack: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            --border-radius-main: 8px;
+            --spacing-unit: 12px;
+        }
+
+        body {
+            font-family: var(--font-stack);
+            background-color: var(--color-bg-main);
+            color: #776e65;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: var(--spacing-unit);
+            box-sizing: border-box;
+            user-select: none; /* 防止選擇文字 */
+        }
+
+        /* 遊戲標題和分數區塊 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            width: 100%;
+            max-width: 500px;
+            margin-bottom: var(--spacing-unit);
+        }
+
+        h1 {
+            font-size: 3.5rem;
+            font-weight: 900;
+            color: #776e65;
+            margin: 0;
+            line-height: 1;
+        }
+
+        .score-container {
+            text-align: right;
+            line-height: 1;
+        }
+
+        .score-box {
+            background-color: #bbada0;
+            color: white;
+            padding: 8px 16px;
+            border-radius: var(--border-radius-main);
+            font-size: 1.5rem;
+            font-weight: 700;
+            min-width: 80px;
+            display: inline-block;
+            margin-bottom: 4px; /* 與按鈕保持一致 */
+        }
+
+        .score-label {
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: #eee4da;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        /* AI 策略按鈕 */
+        .strategy-container {
+            width: 100%;
+            max-width: 500px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: var(--spacing-unit);
+        }
+        
+        #strategy-button {
+            background-color: var(--color-ai-button);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: var(--border-radius-main);
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+            box-shadow: 0 4px #3d7e3d;
+        }
+
+        #strategy-button:hover {
+            background-color: #6ed16e;
+        }
+        #strategy-button:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px #3d7e3d;
+        }
+        #strategy-button:disabled {
+            background-color: #ccc;
+            box-shadow: none;
+            cursor: not-allowed;
+        }
+
+        #strategy-output {
+            background-color: #fff8e1;
+            border: 1px solid #ffecb3;
+            color: #6d4c41;
+            padding: 10px;
+            border-radius: var(--border-radius-main);
+            font-size: 0.9rem;
+            min-height: 20px;
+            transition: all 0.3s ease;
+        }
+
+        /* 遊戲主容器 */
+        .game-container {
+            position: relative;
+            background: var(--color-grid-bg);
+            border-radius: var(--border-radius-main);
+            padding: var(--spacing-unit);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+            touch-action: none; /* 允許在觸摸設備上進行滑動 */
+        }
+
+        /* 遊戲網格 */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            grid-template-rows: repeat(4, 1fr);
+            gap: var(--spacing-unit);
+        }
+
+        .cell {
+            width: 100px;
+            height: 100px;
+            background-color: var(--color-empty-cell);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            font-weight: 700;
+            transition: 
+                transform 0.2s ease-out, 
+                opacity 0.2s ease-out,
+                background-color 0.1s ease-in-out;
+        }
+
+        /* 數字方塊樣式 (Tile) */
+        .tile {
+            position: absolute;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100px;
+            height: 100px;
+            border-radius: 4px;
+            color: white;
+            font-size: 2rem;
+            font-weight: 700;
+            /* 動畫過渡 */
+            transition: all 0.1s ease-in-out, transform 0.2s ease;
+        }
+
+        /* 方塊值配色 */
+        .tile-2 { background: #eee4da; color: #776e65; }
+        .tile-4 { background: #ede0c8; color: #776e65; }
+        .tile-8 { background: #f2b179; }
+        .tile-16 { background: #f59563; }
+        .tile-32 { background: #f67c5f; }
+        .tile-64 { background: #f65e3b; }
+        .tile-128 { background: #edcf72; font-size: 1.6rem; }
+        .tile-256 { background: #edcc61; font-size: 1.6rem; }
+        .tile-512 { background: #edc850; font-size: 1.6rem; }
+        .tile-1024 { background: #edc53f; font-size: 1.4rem; }
+        .tile-2048 { background: #edc22e; font-size: 1.4rem; }
+        .tile-super { background: #3c3a32; font-size: 1.2rem; }
+
+        /* 新出現的方塊動畫 */
+        .tile-new {
+            animation: popIn 0.15s ease-out;
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0.5); opacity: 0.5; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        /* 遊戲狀態覆蓋層 (Game Over / Win) */
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.9); /* 稍微不透明一點 */
+            border-radius: var(--border-radius-main);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            text-align: center;
+            padding: var(--spacing-unit);
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease;
+        }
+
+        .overlay.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .overlay h2 {
+            font-size: 2.5rem; /* 調整大小以容納更多文字 */
+            color: #776e65;
+            margin-bottom: var(--spacing-unit);
+            line-height: 1.2;
+        }
+
+        .overlay p {
+            font-size: 1.1rem;
+            color: #8f7a66;
+            margin-bottom: 20px;
+            max-width: 80%;
+        }
+
+        .overlay button {
+            background-color: #8f7a66;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-size: 1.2rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .overlay button:hover {
+            background-color: #9f8a75;
+        }
+
+        .instructions {
+            width: 100%;
+            max-width: 500px;
+            margin-top: var(--spacing-unit);
+            font-size: 0.9rem;
+            line-height: 1.4;
+            color: #8f7a66;
+            text-align: center;
+        }
+
+        /* 響應式設計 */
+        @media (max-width: 550px) {
+            h1 { font-size: 2.5rem; }
+            .score-box { font-size: 1.2rem; min-width: 60px; padding: 6px 12px; }
+            .cell, .tile { width: 70px; height: 70px; font-size: 1.5rem; }
+            .grid, .game-container { gap: 8px; padding: 8px; }
+            .tile-128, .tile-256, .tile-512 { font-size: 1.4rem; }
+            .tile-1024, .tile-2048 { font-size: 1.2rem; }
+            .overlay h2 { font-size: 2rem; }
+            .overlay p { font-size: 1rem; }
+            #strategy-button { padding: 8px 15px; font-size: 0.9rem; }
+        }
+
+        @media (max-width: 400px) {
+            .cell, .tile { width: 60px; height: 60px; font-size: 1.3rem; }
+            .tile-128, .tile-256, .tile-512 { font-size: 1.2rem; }
+            .tile-1024, .tile-2048 { font-size: 1rem; }
+            .header { flex-direction: column; align-items: center; }
+            .score-container { margin-top: 10px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>2048</h1>
+        <div class="score-container">
+            <span class="score-box" id="score-label">
+                <span class="score-label">分數</span>
+                <span id="score">0</span>
+            </span>
+        </div>
+    </div>
+    
+    <!-- AI 策略區塊 -->
+    <div class="strategy-container">
+        <button id="strategy-button" title="Ask Gemini for the optimal next move">✨ 請求 AI 策略 ✨</button>
+        <div id="strategy-output">
+            AI 策略建議將顯示在這裡。
+        </div>
+    </div>
+    <!-- 結束 AI 策略區塊 -->
+
+    <div class="game-container" id="game-container">
+        <!-- 4x4 網格底層 -->
+        <div class="grid">
+            <div class="cell"></div>
+            <div class="cell"></div>
+            <div class="cell"></div>
+            <div class="cell"></div>
+            <div class="cell"></div>
+            <div class="cell"></div>
+            <div class="cell"></div>
+            <div class="cell"></div>
+            <div class="cell"></div>
+            <div class="cell"></div>
+            <div class="cell"></div>
+            <div class="cell"></div>
+            <div class="cell"></div>
+            <div class="cell"></div>
+            <div class="cell"></div>
+            <div class="cell"></div>
+        </div>
+
+        <!-- 遊戲狀態覆蓋層 -->
+        <div class="overlay" id="overlay">
+            <h2 id="overlay-message"></h2>
+            <p id="ai-analysis" style="font-weight: 700;">分析中...</p>
+            <button id="restart-button">重新開始</button>
+        </div>
+
+        <!-- 方塊將在這裡動態生成 -->
+    </div>
+
+    <div class="instructions">
+        使用鍵盤方向鍵 (↑ ↓ ← →) 或在手機上滑動以移動方塊。
+    </div>
+
+    <script>
+        const GRID_SIZE = 4;
+        const TILE_CONTAINER = document.getElementById('game-container');
+        const SCORE_ELEM = document.getElementById('score');
+        const OVERLAY = document.getElementById('overlay');
+        const OVERLAY_MESSAGE = document.getElementById('overlay-message');
+        const RESTART_BUTTON = document.getElementById('restart-button');
+        const STRATEGY_BUTTON = document.getElementById('strategy-button');
+        const STRATEGY_OUTPUT = document.getElementById('strategy-output');
+        const AI_ANALYSIS_ELEM = document.getElementById('ai-analysis');
+
+        let board = [];
+        let score = 0;
+        let isGameOver = false;
+        let isGameWon = false;
+        let isMoving = false;
+        let highestTile = 0; // 追蹤最高分數方塊
+
+        // 觸摸事件的起始坐標
+        let touchStartX = 0;
+        let touchStartY = 0;
+        const SWIPE_THRESHOLD = 50;
+        
+        // --- Gemini API 設置 ---
+        const API_KEY = ""; // Canvas 運行時會提供
+        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${API_KEY}`;
+        
+        /**
+         * 將 4x4 棋盤轉換為一個易於 LLM 解析的字符串格式
+         * @returns {string} 棋盤狀態字符串
+         */
+        function formatBoardForLLM() {
+            return JSON.stringify(board).replace(/\[/g, '(').replace(/\]/g, ')');
+        }
+
+        /**
+         * 執行 Gemini API 呼叫，帶有指數退避機制
+         * @param {string} systemInstruction - 給 LLM 的系統指令
+         * @param {string} userQuery - 傳遞給 LLM 的用戶查詢
+         * @param {number} retryCount - 當前重試次數
+         * @returns {Promise<string>} 來自 LLM 的回應文本
+         */
+        async function callGeminiAPI(systemInstruction, userQuery, retryCount = 0) {
+            const MAX_RETRIES = 3;
+            const delay = Math.pow(2, retryCount) * 1000;
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: { parts: [{ text: systemInstruction }] },
+            };
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    if (response.status === 429 && retryCount < MAX_RETRIES) {
+                        console.warn(`API Rate limit exceeded, retrying in ${delay / 1000}s...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        return callGeminiAPI(systemInstruction, userQuery, retryCount + 1);
+                    }
+                    throw new Error(`API call failed with status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                const text = result.candidates?.[0]?.content?.parts?.[0]?.text || "無法獲取 AI 回應。";
+                return text;
+
+            } catch (error) {
+                console.error("Gemini API Error:", error);
+                return `API 錯誤: ${error.message}`;
+            }
+        }
+
+        /**
+         * 請求 AI 提供策略建議
+         */
+        STRATEGY_BUTTON.addEventListener('click', async () => {
+            if (isGameOver || isMoving) return;
+
+            STRATEGY_BUTTON.disabled = true;
+            STRATEGY_OUTPUT.textContent = "AI 正在分析棋盤... (思考中)";
+            
+            const boardState = formatBoardForLLM();
+            const systemPrompt = "你是一位 2048 遊戲專家策略師。你的主要目標是提供簡潔、戰術性的建議，包含**單一**最佳移動方向和簡短理由。";
+            const userQuery = `分析當前的 2048 遊戲棋盤狀態：${boardState}。建議**單一**最佳的下一步移動方向 (UP, DOWN, LEFT, 或 RIGHT) 並提供一個簡短的 (最多 30 個中文字) 理由，目標是衝擊高分。`;
+
+            const strategy = await callGeminiAPI(systemPrompt, userQuery);
+
+            STRATEGY_OUTPUT.textContent = strategy;
+            STRATEGY_BUTTON.disabled = false;
+        });
+
+        // --- 初始化遊戲 ---
+
+        function setupGame() {
+            // 清空舊的方塊
+            const tiles = document.querySelectorAll('.tile');
+            tiles.forEach(tile => tile.remove());
+
+            board = Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill(0));
+            score = 0;
+            isGameOver = false;
+            isGameWon = false;
+            isMoving = false;
+            highestTile = 0; // 重置最高方塊
+
+            updateScore(0);
+            OVERLAY.classList.remove('visible');
+            STRATEGY_OUTPUT.textContent = "AI 策略建議將顯示在這裡。";
+            
+            addRandomTile();
+            addRandomTile();
+            updateUI();
+        }
+
+        // --- 核心邏輯：新增方塊 ---
+
+        function addRandomTile() {
+            if (!hasEmptyCell()) return;
+
+            let row, col;
+            do {
+                row = Math.floor(Math.random() * GRID_SIZE);
+                col = Math.floor(Math.random() * GRID_SIZE);
+            } while (board[row][col] !== 0);
+
+            // 90% 的機率是 2，10% 是 4
+            board[row][col] = Math.random() < 0.9 ? 2 : 4;
+        }
+
+        function hasEmptyCell() {
+            return board.some(row => row.includes(0));
+        }
+
+        // --- 核心邏輯：移動與合併 ---
+
+        // 獲取網格單元的位置信息，用於定位方塊
+        function getCellPosition(row, col) {
+            const containerRect = TILE_CONTAINER.getBoundingClientRect();
+            // 從 CSS 中獲取間距（12px）
+            const gap = parseFloat(getComputedStyle(TILE_CONTAINER).padding) / GRID_SIZE; 
+            const cellWidth = (containerRect.width - (GRID_SIZE + 1) * 12) / GRID_SIZE; 
+
+            // 計算基於容器左上角的偏移量 (padding/gap 為 12px)
+            const x = 12 + col * (cellWidth + 12);
+            const y = 12 + row * (cellWidth + 12);
+
+            return { x, y, width: cellWidth };
+        }
+
+        function filterZeros(arr) {
+            return arr.filter(val => val !== 0);
+        }
+
+        function mergeTiles(arr) {
+            const newArr = filterZeros(arr);
+            let merged = false;
+            for (let i = 0; i < newArr.length - 1; i++) {
+                if (newArr[i] === newArr[i + 1]) {
+                    const mergedValue = newArr[i] * 2;
+                    newArr[i] = mergedValue;
+                    newArr[i + 1] = 0;
+                    updateScore(score + mergedValue);
+                    if (mergedValue > highestTile) {
+                        highestTile = mergedValue; // 更新最高方塊
+                    }
+                    merged = true;
+                }
+            }
+            // 再次過濾並填充零
+            const finalArr = filterZeros(newArr);
+            while (finalArr.length < GRID_SIZE) {
+                finalArr.push(0);
+            }
+            return { array: finalArr, merged };
+        }
+
+        // 處理單個方向的移動 (0: 左, 1: 右, 2: 上, 3: 下)
+        function move(direction) {
+            if (isMoving || isGameOver) return;
+            isMoving = true;
+            STRATEGY_OUTPUT.textContent = "AI 策略建議將顯示在這裡。"; // 清除舊建議
+
+            let boardChanged = false;
+            let newBoard = Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill(0));
+            
+            // 執行移動邏輯
+            for (let i = 0; i < GRID_SIZE; i++) {
+                let line = [];
+                if (direction === 0 || direction === 1) { // 左右移動 (處理行)
+                    line = board[i];
+                } else { // 上下移動 (處理列)
+                    line = board.map(row => row[i]);
+                }
+
+                // 執行合併
+                let { array: mergedLine, merged: lineMerged } = direction === 0 || direction === 2 
+                    ? mergeTiles(line)  // 左/上 (正向合併)
+                    : mergeTiles([...line].reverse()); // 右/下 (反向合併，然後反轉回來)
+
+                if (direction === 1 || direction === 3) {
+                    mergedLine = mergedLine.reverse(); // 恢復到正確的順序
+                }
+
+                // 檢查是否有變化
+                if (JSON.stringify(line) !== JSON.stringify(mergedLine) || lineMerged) {
+                    boardChanged = true;
+                }
+
+                // 設置新板狀態
+                for (let j = 0; j < GRID_SIZE; j++) {
+                    const newValue = mergedLine[j];
+
+                    if (direction === 0 || direction === 1) {
+                        newBoard[i][j] = newValue; // 設置新行
+                    } else {
+                        newBoard[j][i] = newValue; // 設置新列
+                    }
+                }
+            }
+            
+            if (boardChanged) {
+                board = newBoard;
+                addRandomTile();
+                updateUI();
+                checkGameStatus();
+            }
+
+            // 即使有變化，也需要短暫延遲來讓新方塊 'pop in'
+            setTimeout(() => {
+                isMoving = false;
+            }, 100);
+        }
+
+        // --- UI 渲染 ---
+
+        function getTileColorClass(value) {
+            if (value <= 2048) {
+                return `tile-${value}`;
+            }
+            return 'tile-super';
+        }
+
+        function updateUI() {
+            // 1. 移除舊的方塊
+            const oldTiles = document.querySelectorAll('.tile');
+            oldTiles.forEach(tile => tile.remove());
+
+            // 2. 重新繪製所有方塊
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    const value = board[r][c];
+                    if (value !== 0) {
+                        const pos = getCellPosition(r, c);
+
+                        const tile = document.createElement('div');
+                        tile.className = `tile ${getTileColorClass(value)}`;
+                        tile.textContent = value;
+                        
+                        // 設置位置 (使用 transform 實現硬性定位和動畫)
+                        tile.style.transform = `translate(${pos.x}px, ${pos.y}px)`;
+                        tile.style.width = `${pos.width}px`;
+                        tile.style.height = `${pos.width}px`;
+                        
+                        tile.setAttribute('data-row', r);
+                        tile.setAttribute('data-col', c);
+                        tile.setAttribute('data-value', value);
+
+                        tile.classList.add('tile-new');
+                        
+                        TILE_CONTAINER.appendChild(tile);
+                        
+                        // 檢查勝利
+                        if (value === 2048 && !isGameWon) {
+                            isGameWon = true;
+                            // 延遲展示勝利訊息，讓方塊動畫完成
+                            setTimeout(() => {
+                                checkGameStatus();
+                            }, 500);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 更新分數 UI
+        function updateScore(newScore) {
+            score = newScore;
+            SCORE_ELEM.textContent = score;
+        }
+
+        // --- 遊戲狀態檢查 ---
+        async function checkGameStatus() {
+            if (isGameWon) {
+                OVERLAY_MESSAGE.textContent = "恭喜！您達到了 2048！";
+                AI_ANALYSIS_ELEM.textContent = "🎉 遊戲獲勝！這是非常了不起的成就！";
+                OVERLAY.classList.add('visible');
+                return;
+            }
+
+            if (hasEmptyCell()) {
+                return; // 還有空位，繼續遊戲
+            }
+
+            // 檢查是否還有任何合併的可能性
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    const val = board[r][c];
+                    
+                    // 檢查右側
+                    if (c < GRID_SIZE - 1 && board[r][c + 1] === val) return;
+                    // 檢查下方
+                    if (r < GRID_SIZE - 1 && board[r + 1][c] === val) return;
+                }
+            }
+
+            // 既沒有空位，也沒有可合併的，遊戲結束
+            isGameOver = true;
+            OVERLAY_MESSAGE.textContent = "遊戲結束！沒有更多移動了。";
+            
+            // ✨ 呼叫 AI 進行遊戲分析
+            AI_ANALYSIS_ELEM.textContent = "✨ AI 正在分析您的表現...";
+            
+            const boardState = formatBoardForLLM();
+            const systemPrompt = "你是一位熱情且鼓勵人的遊戲分析師。提供一份簡短的表現分析（50個中文字內），並給出一個戰術技巧，幫助玩家在下一次嘗試中進步。";
+            const userQuery = `玩家以分數 ${score} 結束了遊戲，並達到了最高的方塊 ${highestTile}。最終棋盤狀態為：${boardState}。請提供一份鼓勵性的總結和一個戰術提示。`;
+            
+            const analysis = await callGeminiAPI(systemPrompt, userQuery);
+            AI_ANALYSIS_ELEM.textContent = `✨ AI 分析：${analysis}`;
+            
+            OVERLAY.classList.add('visible');
+        }
+
+        // --- 事件處理：鍵盤 ---
+
+        document.addEventListener('keydown', (e) => {
+            if (isGameOver || isMoving) return;
+
+            switch (e.key) {
+                case 'ArrowLeft':
+                    move(0); // 左
+                    break;
+                case 'ArrowRight':
+                    move(1); // 右
+                    break;
+                case 'ArrowUp':
+                    move(2); // 上
+                    break;
+                case 'ArrowDown':
+                    move(3); // 下
+                    break;
+                default:
+                    return; // 忽略其他鍵
+            }
+            e.preventDefault(); // 防止滾動頁面
+        });
+
+        // --- 事件處理：觸摸/滑動 (適用於手機) ---
+
+        TILE_CONTAINER.addEventListener('touchstart', (e) => {
+            if (isGameOver || isMoving) return;
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            e.preventDefault();
+        }, { passive: false });
+
+        TILE_CONTAINER.addEventListener('touchend', (e) => {
+            if (isGameOver || isMoving || !touchStartX) return;
+
+            const touchEndX = e.changedTouches[0].clientX;
+            const touchEndY = e.changedTouches[0].clientY;
+
+            const dx = touchEndX - touchStartX;
+            const dy = touchEndY - touchStartY;
+
+            const absDx = Math.abs(dx);
+            const absDy = Math.abs(dy);
+
+            if (Math.max(absDx, absDy) < SWIPE_THRESHOLD) {
+                // 滑動距離太短
+                return;
+            }
+
+            // 判斷方向
+            if (absDx > absDy) {
+                // 左右滑動
+                if (dx > 0) move(1); // 右
+                else move(0); // 左
+            } else {
+                // 上下滑動
+                if (dy > 0) move(3); // 下
+                else move(2); // 上
+            }
+
+            // 重置坐標
+            touchStartX = 0;
+            touchStartY = 0;
+        });
+
+        // --- 設置與啟動 ---
+        
+        // 重新開始按鈕
+        RESTART_BUTTON.addEventListener('click', setupGame);
+
+        // 確保在頁面加載完成後計算單元格尺寸並啟動遊戲
+        window.onload = function() {
+            setupGame();
+            
+            // 監聽窗口大小改變以重新計算方塊位置（響應式）
+            window.addEventListener('resize', updateUI); 
+        };
+    </script>
+</body>
+</html>
